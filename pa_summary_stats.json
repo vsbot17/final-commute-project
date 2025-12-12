@@ -1,0 +1,10 @@
+{
+  "total_commuters": 6179069,
+  "avg_commute_minutes": 9.9,
+  "drive_alone_pct": 3.0,
+  "transit_pct": 47.1,
+  "wfh_pct": 7.6,
+  "median_income": 68000,
+  "annual_hours_lost": 509773192.5,
+  "annual_cost_avg": 8740
+}

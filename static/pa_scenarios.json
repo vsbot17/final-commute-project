@@ -1,0 +1,33 @@
+{
+  "current": {
+    "name": "Current (2024)",
+    "mode_split": {
+      "drive_alone_pct": 3.0,
+      "transit_pct": 47.1,
+      "wfh_pct": 7.6
+    },
+    "emissions_tons": 2166258.01002
+  },
+  "10pct_transit": {
+    "name": "10% Shift to Transit",
+    "mode_split": {
+      "drive_alone_pct": -7.0,
+      "transit_pct": 57.1,
+      "wfh_pct": 7.6
+    },
+    "emissions_tons": 930444.21002,
+    "emissions_reduced": 1235813.7999999998,
+    "pct_reduction": 57.04831992697814
+  },
+  "20pct_wfh": {
+    "name": "20% More Remote Work",
+    "mode_split": {
+      "drive_alone_pct": -12.0,
+      "transit_pct": 47.1,
+      "wfh_pct": 22.6
+    },
+    "emissions_tons": -225041.69298000002,
+    "emissions_reduced": 2391299.7029999997,
+    "pct_reduction": 110.38849905870272
+  }
+}
