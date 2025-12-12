@@ -91,17 +91,18 @@
           };
         });
       } else if (metroData && metroData.length > 0) {
-        // Use metro data as fallback - convert metros to representative counties
+        // Use metro data as fallback - use metro names directly
         countyData = metroData.map((metro: any) => {
+          // Use metro name as county name, or fallback to first county in mapping
           const counties = metroToCounties[metro.metro] || [metro.metro];
           const primaryCounty = counties[0];
           const coords = countyCoordinates[primaryCounty] || { lat: 40.0, lon: -77.0 };
           
-          // Estimate total CO2 from per capita and workers
+          // Calculate total CO2 from per capita and workers
           const estimatedCO2 = metro.co2_per_capita * metro.workers;
           
           return {
-            county: primaryCounty,
+            county: metro.metro, // Use metro name for clarity
             lat: coords.lat,
             lon: coords.lon,
             co2_tons: estimatedCO2,
@@ -111,13 +112,12 @@
           };
         });
       } else {
-        // Fallback to default data structure
+        // Fallback to default data structure (4 metros)
         countyData = [
-          { county: 'Philadelphia', lat: 40.0094, lon: -75.1333, co2_tons: 2_345_000, co2_per_capita: 1.48 },
-          { county: 'Allegheny', lat: 40.4406, lon: -79.9959, co2_tons: 1_234_000, co2_per_capita: 0.99 },
-          { county: 'Montgomery', lat: 40.1688, lon: -75.3560, co2_tons: 987_000, co2_per_capita: 1.15 },
-          { county: 'Bucks', lat: 40.3154, lon: -75.1085, co2_tons: 765_000, co2_per_capita: 1.22 },
-          { county: 'Delaware', lat: 39.9167, lon: -75.4167, co2_tons: 654_000, co2_per_capita: 1.16 }
+          { county: 'Philadelphia', lat: 40.0094, lon: -75.1333, co2_tons: 2_345_000, co2_per_capita: 2.89, total_workers: 2100000, mean_commute: 32.5 },
+          { county: 'Allegheny', lat: 40.4406, lon: -79.9959, co2_tons: 1_234_000, co2_per_capita: 2.38, total_workers: 980000, mean_commute: 26.8 },
+          { county: 'Harrisburg', lat: 40.3991, lon: -76.7897, co2_tons: 630_000, co2_per_capita: 2.18, total_workers: 290000, mean_commute: 24.5 },
+          { county: 'Allentown', lat: 40.6023, lon: -75.5964, co2_tons: 851_000, co2_per_capita: 2.24, total_workers: 380000, mean_commute: 25.2 }
         ];
       }
 
@@ -128,11 +128,12 @@
       renderMap();
     } catch (error) {
       console.error('Error loading county data:', error);
-      // Use fallback data
+      // Use fallback data (4 metros)
       countyData = [
-        { county: 'Philadelphia', lat: 40.0094, lon: -75.1333, co2_tons: 2_345_000, co2_per_capita: 1.48 },
-        { county: 'Allegheny', lat: 40.4406, lon: -79.9959, co2_tons: 1_234_000, co2_per_capita: 0.99 },
-        { county: 'Montgomery', lat: 40.1688, lon: -75.3560, co2_tons: 987_000, co2_per_capita: 1.15 }
+        { county: 'Philadelphia', lat: 40.0094, lon: -75.1333, co2_tons: 2_345_000, co2_per_capita: 2.89, total_workers: 2100000, mean_commute: 32.5 },
+        { county: 'Allegheny', lat: 40.4406, lon: -79.9959, co2_tons: 1_234_000, co2_per_capita: 2.38, total_workers: 980000, mean_commute: 26.8 },
+        { county: 'Harrisburg', lat: 40.3991, lon: -76.7897, co2_tons: 630_000, co2_per_capita: 2.18, total_workers: 290000, mean_commute: 24.5 },
+        { county: 'Allentown', lat: 40.6023, lon: -75.5964, co2_tons: 851_000, co2_per_capita: 2.24, total_workers: 380000, mean_commute: 25.2 }
       ];
       dataLoaded = true;
       renderMap();
@@ -142,37 +143,45 @@
   function renderMap() {
     if (!mapContainer || countyData.length === 0) return;
 
-    const svgWidth = 800;
+    const svgWidth = 900;
     const svgHeight = 600;
-    const leftMargin = 80;
+    const leftMargin = 100;
     const rightMargin = 50;
-    const topMargin = 50;
-    const bottomMargin = 80;
+    const topMargin = 60;
+    const bottomMargin = 120; // Increased to accommodate county names
     const plotWidth = svgWidth - leftMargin - rightMargin;
     const plotHeight = svgHeight - topMargin - bottomMargin;
 
-    // Determine axes: X = Average Commute Time, Y = Emissions
+    // Determine axes: X = Counties (categorical), Y = Emissions
     const valueKey = viewMode === 'total' ? 'co2_tons' : 'co2_per_capita';
     const yAxisLabel = viewMode === 'total' ? 'Total Annual CO₂ Emissions (tons)' : 'Per Capita CO₂ Emissions (tons/person)';
     
-    // Get data ranges for scaling
-    const commuteTimes = countyData.map(c => c.mean_commute || 0).filter(v => v > 0);
-    const minCommute = commuteTimes.length > 0 ? Math.min(...commuteTimes) : 0;
-    const maxCommute = commuteTimes.length > 0 ? Math.max(...commuteTimes) : 50;
+    // Sort counties by emissions for display
+    const sortedData = [...countyData].sort((a, b) => b[valueKey] - a[valueKey]);
     
+    // Get data ranges for Y-axis scaling
     const values = countyData.map(c => c[valueKey]);
-    const minValue = Math.min(...values);
-    const maxValue = Math.max(...values);
+    const minValue = 0; // Always start from 0 for bar chart style
+    const maxValue = Math.max(...values) * 1.1; // Add 10% padding at top
 
-    // Circle size based on total workers (if available) or fixed size
-    function getRadius(county: any) {
-      if (county.total_workers) {
-        const maxWorkers = Math.max(...countyData.map(c => c.total_workers || 0));
-        const minR = 8, maxR = 35;
-        return Math.sqrt((county.total_workers || 0) / (maxWorkers || 1)) * (maxR - minR) + minR;
+    // Circle size based on total workers - calculate all worker values first
+    const workerValues = countyData.map(c => c.total_workers || 0).filter(v => v > 0);
+    const maxWorkers = workerValues.length > 0 ? Math.max(...workerValues) : 1;
+    const minWorkers = workerValues.length > 0 ? Math.min(...workerValues) : 0;
+    
+    function getRadius(county: any): number {
+      const workers = county.total_workers || 0;
+      if (maxWorkers > 0 && workers > 0) {
+        const minR = 12, maxR = 45;
+        // Use square root scaling for better visual differentiation
+        const normalized = Math.sqrt((workers - minWorkers) / (maxWorkers - minWorkers || 1));
+        return normalized * (maxR - minR) + minR;
       }
-      return 12; // Default radius
+      return 20; // Default radius when workers not available
     }
+
+    // Calculate positions for each county (evenly spaced on x-axis)
+    const countySpacing = plotWidth / (sortedData.length + 1);
 
     // SVG setup
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -188,18 +197,18 @@
     plotArea.setAttribute('y', String(topMargin));
     plotArea.setAttribute('width', String(plotWidth));
     plotArea.setAttribute('height', String(plotHeight));
-    plotArea.setAttribute('fill', 'rgba(255,255,255,0.02)');
-    plotArea.setAttribute('stroke', 'rgba(255,255,255,0.2)');
+      plotArea.setAttribute('fill', 'rgba(255,255,255,0.02)');
+      plotArea.setAttribute('stroke', 'rgba(255,255,255,0.2)');
     plotArea.setAttribute('stroke-width', '1');
     svg.appendChild(plotArea);
 
-    // Draw X-axis (Commute Time)
+    // Draw X-axis (Counties)
     const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     xAxis.setAttribute('x1', String(leftMargin));
     xAxis.setAttribute('y1', String(topMargin + plotHeight));
     xAxis.setAttribute('x2', String(leftMargin + plotWidth));
     xAxis.setAttribute('y2', String(topMargin + plotHeight));
-    xAxis.setAttribute('stroke', 'rgba(255,255,255,0.5)');
+      xAxis.setAttribute('stroke', 'rgba(255,255,255,0.5)');
     xAxis.setAttribute('stroke-width', '2');
     svg.appendChild(xAxis);
 
@@ -209,15 +218,13 @@
     yAxis.setAttribute('y1', String(topMargin));
     yAxis.setAttribute('x2', String(leftMargin));
     yAxis.setAttribute('y2', String(topMargin + plotHeight));
-    yAxis.setAttribute('stroke', 'rgba(255,255,255,0.5)');
+      yAxis.setAttribute('stroke', 'rgba(255,255,255,0.5)');
     yAxis.setAttribute('stroke-width', '2');
     svg.appendChild(yAxis);
 
-    // X-axis ticks and labels (Commute Time)
-    const xTickCount = 6;
-    for (let i = 0; i <= xTickCount; i++) {
-      const value = minCommute + (maxCommute - minCommute) * (i / xTickCount);
-      const x = leftMargin + (plotWidth * i / xTickCount);
+    // X-axis labels (County names)
+    sortedData.forEach((county, index) => {
+      const x = leftMargin + countySpacing * (index + 1);
       
       // Tick mark
       const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -225,20 +232,21 @@
       tick.setAttribute('y1', String(topMargin + plotHeight));
       tick.setAttribute('x2', String(x));
       tick.setAttribute('y2', String(topMargin + plotHeight + 5));
-      tick.setAttribute('stroke', 'rgba(255,255,255,0.4)');
+            tick.setAttribute('stroke', 'rgba(255,255,255,0.4)');
       tick.setAttribute('stroke-width', '1');
       svg.appendChild(tick);
       
-      // Label
+      // County name label (horizontal, with better spacing)
       const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       label.setAttribute('x', String(x));
-      label.setAttribute('y', String(topMargin + plotHeight + 22));
+      label.setAttribute('y', String(topMargin + plotHeight + 25));
       label.setAttribute('text-anchor', 'middle');
-      label.setAttribute('fill', 'rgba(255,255,255,0.8)');
-      label.setAttribute('font-size', '12');
-      label.textContent = value.toFixed(0);
+            label.setAttribute('fill', 'rgba(255,255,255,0.9)');
+      label.setAttribute('font-size', '14');
+      label.setAttribute('font-weight', '600');
+      label.textContent = county.county;
       svg.appendChild(label);
-    }
+    });
 
     // Y-axis ticks and labels (Emissions)
     const yTickCount = 6;
@@ -252,7 +260,7 @@
       tick.setAttribute('y1', String(y));
       tick.setAttribute('x2', String(leftMargin - 5));
       tick.setAttribute('y2', String(y));
-      tick.setAttribute('stroke', 'rgba(255,255,255,0.4)');
+            tick.setAttribute('stroke', 'rgba(255,255,255,0.4)');
       tick.setAttribute('stroke-width', '1');
       svg.appendChild(tick);
       
@@ -261,7 +269,7 @@
       label.setAttribute('x', String(leftMargin - 10));
       label.setAttribute('y', String(y + 4));
       label.setAttribute('text-anchor', 'end');
-      label.setAttribute('fill', 'rgba(255,255,255,0.8)');
+            label.setAttribute('fill', 'rgba(255,255,255,0.85)');
       label.setAttribute('font-size', '12');
       if (viewMode === 'total') {
         label.textContent = (value / 1000).toFixed(0) + 'K';
@@ -274,12 +282,12 @@
     // X-axis title
     const xAxisTitle = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     xAxisTitle.setAttribute('x', String(leftMargin + plotWidth / 2));
-    xAxisTitle.setAttribute('y', String(svgHeight - 20));
+    xAxisTitle.setAttribute('y', String(svgHeight - 25));
     xAxisTitle.setAttribute('text-anchor', 'middle');
-    xAxisTitle.setAttribute('fill', 'rgba(255,255,255,0.9)');
+      xAxisTitle.setAttribute('fill', 'rgba(255,255,255,0.9)');
     xAxisTitle.setAttribute('font-size', '14');
     xAxisTitle.setAttribute('font-weight', '600');
-    xAxisTitle.textContent = 'Average Commute Time (minutes)';
+    xAxisTitle.textContent = 'Pennsylvania Counties/Metros';
     svg.appendChild(xAxisTitle);
 
     // Y-axis title
@@ -287,20 +295,23 @@
     yAxisTitle.setAttribute('x', String(20));
     yAxisTitle.setAttribute('y', String(topMargin + plotHeight / 2));
     yAxisTitle.setAttribute('text-anchor', 'middle');
-    yAxisTitle.setAttribute('fill', 'rgba(255,255,255,0.9)');
+      yAxisTitle.setAttribute('fill', 'rgba(255,255,255,0.9)');
     yAxisTitle.setAttribute('font-size', '14');
     yAxisTitle.setAttribute('font-weight', '600');
     yAxisTitle.setAttribute('transform', `rotate(-90, 20, ${topMargin + plotHeight / 2})`);
     yAxisTitle.textContent = yAxisLabel;
     svg.appendChild(yAxisTitle);
 
-    // Plot counties as circles
-    countyData.forEach((county: any) => {
-      const commuteTime = county.mean_commute || (minCommute + maxCommute) / 2;
+    // Plot counties as circles positioned on x-axis
+    const circles: Array<{ circle: SVGCircleElement; county: any }> = [];
+    
+    sortedData.forEach((county: any, index: number) => {
       const emissionValue = county[valueKey];
       
-      // Map to plot coordinates
-      const x = leftMargin + ((commuteTime - minCommute) / (maxCommute - minCommute || 1)) * plotWidth;
+      // X position: evenly spaced along x-axis
+      const x = leftMargin + countySpacing * (index + 1);
+      
+      // Y position: based on emission value (from bottom axis)
       const y = topMargin + plotHeight - ((emissionValue - minValue) / (maxValue - minValue || 1)) * plotHeight;
 
       const radius = getRadius(county);
@@ -310,59 +321,69 @@
       circle.setAttribute('cy', String(y));
       circle.setAttribute('r', String(radius));
       circle.setAttribute('fill', '#ff6b6b');
-      circle.setAttribute('fill-opacity', '0.6');
+      const isSelected = selectedCounty?.county === county.county;
+      circle.setAttribute('fill-opacity', isSelected ? '0.9' : '0.6');
       circle.setAttribute('stroke', '#ff6b6b');
-      circle.setAttribute('stroke-width', '2');
+      circle.setAttribute('stroke-width', isSelected ? '3' : '2');
       circle.style.cursor = 'pointer';
-      circle.addEventListener('mouseenter', () => {
+      
+      // Store circle reference for later updates
+      circles.push({ circle, county });
+      
+      // Click handler to show tooltip
+      circle.addEventListener('click', () => {
+        // Reset all circles
+        circles.forEach(({ circle: c }) => {
+          c.setAttribute('fill-opacity', '0.7');
+          c.setAttribute('stroke-width', '2');
+        });
+        // Highlight clicked circle
         circle.setAttribute('fill-opacity', '0.9');
         circle.setAttribute('stroke-width', '3');
         selectedCounty = county;
       });
+      circle.addEventListener('mouseenter', () => {
+        if (selectedCounty?.county !== county.county) {
+          circle.setAttribute('fill-opacity', '0.8');
+          circle.setAttribute('stroke-width', '2.5');
+        }
+      });
       circle.addEventListener('mouseleave', () => {
-        circle.setAttribute('fill-opacity', '0.6');
-        circle.setAttribute('stroke-width', '2');
+        if (selectedCounty?.county !== county.county) {
+          circle.setAttribute('fill-opacity', '0.7');
+          circle.setAttribute('stroke-width', '2');
+        }
       });
       svg.appendChild(circle);
 
-      // Add county name label
-      const nameLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      nameLabel.setAttribute('x', String(x));
-      nameLabel.setAttribute('y', String(y - radius - 8));
-      nameLabel.setAttribute('text-anchor', 'middle');
-      nameLabel.setAttribute('font-size', '11');
-      nameLabel.setAttribute('fill', '#ffffff');
-      nameLabel.setAttribute('font-weight', '600');
-      nameLabel.setAttribute('stroke', '#000000');
-      nameLabel.setAttribute('stroke-width', '0.5');
-      nameLabel.setAttribute('stroke-opacity', '0.7');
-      nameLabel.textContent = county.county;
-      svg.appendChild(nameLabel);
-
-      // Annotate top emitter
-      const isTop = emissionValue === maxValue;
-      if (isTop) {
-        const labelX = x + radius + 25;
-        const labelY = y - 5;
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', String(x + radius));
-        line.setAttribute('y1', String(y));
-        line.setAttribute('x2', String(labelX - 4));
-        line.setAttribute('y2', String(labelY));
-        line.setAttribute('stroke', '#ffd93d');
-        line.setAttribute('stroke-width', '1.5');
-        svg.appendChild(line);
-        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', String(labelX));
-        text.setAttribute('y', String(labelY));
-        text.setAttribute('fill', '#ffd93d');
-        text.setAttribute('font-size', '13');
-        text.setAttribute('font-weight', 'bold');
-        text.setAttribute('stroke', '#333');
-        text.setAttribute('stroke-width', '0.7');
-        text.textContent = viewMode === 'total' ? 'Top Emitter' : 'Highest per Capita';
-        svg.appendChild(text);
+      // Add emission value label above circle
+      const valueLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      valueLabel.setAttribute('x', String(x));
+      valueLabel.setAttribute('y', String(y - radius - 10));
+      valueLabel.setAttribute('text-anchor', 'middle');
+      valueLabel.setAttribute('font-size', '12');
+            valueLabel.setAttribute('fill', 'rgba(255,255,255,0.9)');
+      valueLabel.setAttribute('font-weight', '600');
+            valueLabel.setAttribute('stroke', '#000');
+      valueLabel.setAttribute('stroke-width', '0.5');
+      valueLabel.setAttribute('stroke-opacity', '0.5');
+      if (viewMode === 'total') {
+        valueLabel.textContent = (emissionValue / 1000).toFixed(0) + 'K';
+      } else {
+        valueLabel.textContent = emissionValue.toFixed(2);
       }
+      svg.appendChild(valueLabel);
+
+      // Draw vertical line from axis to circle center (optional visual guide)
+      const guideLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      guideLine.setAttribute('x1', String(x));
+      guideLine.setAttribute('y1', String(topMargin + plotHeight));
+      guideLine.setAttribute('x2', String(x));
+      guideLine.setAttribute('y2', String(y));
+      guideLine.setAttribute('stroke', 'rgba(255,255,255,0.15)');
+      guideLine.setAttribute('stroke-width', '1');
+      guideLine.setAttribute('stroke-dasharray', '3,3');
+      svg.insertBefore(guideLine, circle); // Insert before circle so it's behind
     });
 
     mapContainer.innerHTML = '';
@@ -387,6 +408,21 @@
     </div>
   {:else}
   <div class="content-wrapper">
+    <div class="narrative-intro">
+      <h2>Mapping Pennsylvania's Carbon Footprint</h2>
+      <p>
+        The emissions we saw in Chapter 1 aren't spread evenly across Pennsylvania. 
+        Some regions bear a disproportionate share of the burden—and understanding where 
+        emissions are concentrated is the first step toward targeted solutions.
+      </p>
+      <p>
+        The data reveals a critical pattern: <strong>just {Math.min(10, countyData.length)} counties 
+        account for {top10Percentage}% of Pennsylvania's total commute emissions</strong>. 
+        This concentration means that strategic interventions in these areas could yield 
+        outsized environmental benefits.
+      </p>
+    </div>
+
     <div class="intro-stats">
       <div class="key-stat">
         <span class="stat-number">{Math.min(10, countyData.length)}</span>
@@ -406,8 +442,8 @@
       </button>
       <p class="control-hint">
         {viewMode === 'total' 
-          ? 'Click to Show total annual CO₂ emissions by county' 
-          : 'Click to Show emissions per person - rural counties often higher!'}
+          ? 'Showing total annual CO₂ emissions by county' 
+          : 'Showing emissions per person - rural counties often higher!'}
       </p>
     </div>
 
@@ -415,52 +451,56 @@
     <div class="graph-story-context">
       <h2>
         {viewMode === 'total'
-          ? 'Commute Time vs. Total Emissions'
-          : 'Commute Time vs. Per Capita Emissions'}
+          ? 'Total Emissions by County/Metro'
+          : 'Per Capita Emissions by County/Metro'}
       </h2>
-      <p>
+      <p class="chart-explanation">
         {viewMode === 'total'
-          ? 'Each circle represents a county. The X-axis shows average commute time; the Y-axis shows total annual CO₂ emissions. Circle size represents number of workers. Higher and further right = more emissions and longer commutes.'
-          : 'Each circle represents a county. The X-axis shows average commute time; the Y-axis shows per capita emissions. Circle size represents number of workers. Higher and further right = higher individual impact and longer commutes.'}
+          ? 'This visualization shows where Pennsylvania\'s commute emissions are concentrated. Each circle represents a county or metro area, positioned on the X-axis by name. The Y-axis shows total annual CO₂ emissions in tons. The size of each circle reflects the number of workers—larger circles mean more commuters. Click on any circle to explore detailed statistics for that region.'
+          : 'Switching to per capita view reveals a different story. While urban areas generate the most total emissions, rural counties often have higher emissions per person due to longer commutes and limited transit options. The Y-axis now shows emissions per person (tons/person), while circle size still represents total workers. This view helps identify where individual commuters face the greatest environmental impact.'}
+      </p>
+      <p class="chart-interaction-hint">
+        💡 <strong>Explore the data:</strong> Click on any circle to see detailed statistics including total emissions, 
+        worker count, average commute time, and per capita emissions for that county or metro area.
       </p>
     </div>
 
-    <!-- BUBBLE LEGEND / KEY (above map) -->
-    <div class="key-card">
-      <div class="legend-row">
-        <svg width="32" height="32"><circle cx="16" cy="16" r="15" fill="#ff6b6b" fill-opacity="0.6"/></svg>
-        <span>{viewMode === 'total' ? 'Highest Total (tons)' : 'Highest per Capita (tons/person)'}</span>
-        <strong>
-          {viewMode === 'total'
-            ? Math.round(Math.max(...countyData.map(c => c.co2_tons))/1000) + 'K'
-            : Math.max(...countyData.map(c => c.co2_per_capita)).toFixed(2)}
-        </strong>
-      </div>
-      <div class="legend-row">
-        <svg width="20" height="20"><circle cx="10" cy="10" r="9" fill="#ff6b6b" fill-opacity="0.6"/></svg>
-        <span>Median Value</span>
-        <strong>
-          {viewMode === 'total'
-            ? Math.round(countyData.map(c=>c.co2_tons/1000).sort((a,b)=>a-b)[Math.floor(countyData.length/2)]) + 'K'
-            : countyData.map(c=>c.co2_per_capita).sort((a,b)=>a-b)[Math.floor(countyData.length/2)].toFixed(2)}
-        </strong>
-      </div>
-      <div class="legend-row">
-        <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#ff6b6b" fill-opacity="0.6"/></svg>
-        <span>{viewMode === 'total' ? 'Lowest Total' : 'Lowest per Capita'}</span>
-        <strong>
-          {viewMode === 'total'
-            ? Math.round(Math.min(...countyData.map(c => c.co2_tons))/1000) + 'K'
-            : Math.min(...countyData.map(c => c.co2_per_capita)).toFixed(2)}
-        </strong>
-      </div>
-    </div>
+    <div class="chart-and-details">
+      <div class="map-container" bind:this={mapContainer}></div>
 
-    <div class="map-container" bind:this={mapContainer}></div>
+      {#if selectedCounty}
+        <div class="county-detail">
+          <button class="close-btn" on:click={() => selectedCounty = null} aria-label="Close details">×</button>
+          <h3>{selectedCounty.county} {selectedCounty.county.includes('County') ? '' : 'Metro Area'}</h3>
+          <div class="detail-grid">
+            <div class="detail-item">
+              <span class="detail-label">Total Annual Emissions</span>
+              <span class="detail-value">{(selectedCounty.co2_tons / 1000).toFixed(0)}K tons</span>
+            </div>
+            {#if selectedCounty.total_workers}
+              <div class="detail-item">
+                <span class="detail-label">Total Workers</span>
+                <span class="detail-value">{selectedCounty.total_workers.toLocaleString()}</span>
+              </div>
+            {/if}
+            {#if selectedCounty.mean_commute}
+              <div class="detail-item">
+                <span class="detail-label">Avg Commute Time</span>
+                <span class="detail-value">{selectedCounty.mean_commute.toFixed(1)} min</span>
+              </div>
+            {/if}
+            <div class="detail-item">
+              <span class="detail-label">Per Capita Emissions</span>
+              <span class="detail-value">{selectedCounty.co2_per_capita.toFixed(2)} tons/person</span>
+            </div>
+          </div>
+        </div>
+      {/if}
+    </div>
 
     {#if viewMode === 'total'}
       <div class="insight-box">
-        <h3>🌆 Most emissions? Big cities by total, but ...</h3>
+        <h3>🌆 Top Emitting Regions by Total</h3>
         <ul>
           {#each countyData.slice(0, 3) as c}
             <li>
@@ -475,7 +515,7 @@
       </div>
     {:else}
       <div class="insight-box">
-        <h3>🚘 Per-person: Rural counties, big outliers</h3>
+        <h3>🚘 Per-Person Impact: Rural Counties Show Higher Individual Burden</h3>
         <ul>
           {#each [...countyData].sort((a, b) => b.co2_per_capita - a.co2_per_capita).slice(0, 3) as c}
             <li>
@@ -490,52 +530,42 @@
       </div>
     {/if}
 
-    {#if selectedCounty}
-      <div class="county-detail">
-        <h3>{selectedCounty.county} County</h3>
-        <div class="detail-grid">
-          <div class="detail-item">
-            <span class="detail-label">Total Annual Emissions</span>
-            <span class="detail-value">{(selectedCounty.co2_tons / 1000).toFixed(0)}K tons</span>
-          </div>
-          {#if selectedCounty.total_workers}
-            <div class="detail-item">
-              <span class="detail-label">Total Workers</span>
-              <span class="detail-value">{selectedCounty.total_workers.toLocaleString()}</span>
-            </div>
-          {/if}
-          {#if selectedCounty.mean_commute}
-            <div class="detail-item">
-              <span class="detail-label">Avg Commute Time</span>
-              <span class="detail-value">{selectedCounty.mean_commute.toFixed(1)} min</span>
-            </div>
-          {/if}
-          <div class="detail-item">
-            <span class="detail-label">Per Capita Emissions</span>
-            <span class="detail-value">{selectedCounty.co2_per_capita.toFixed(2)} tons/person</span>
-          </div>
-        </div>
-      </div>
-    {/if}
-
-    <div class="top-counties">
-      <h2>Top {Math.min(5, countyData.length)} Emitting {countyData.length > 0 ? 'Counties' : 'Areas'}</h2>
-      <div class="counties-list">
-        {#each countyData.slice(0, Math.min(5, countyData.length)) as county, i}
-          <div 
-            class="county-row" 
-            role="button"
-            tabindex="0"
-            on:click={() => selectedCounty = county}
-            on:keydown={(e) => e.key === 'Enter' && (selectedCounty = county)}
-          >
-            <span class="rank">#{i + 1}</span>
-            <span class="county-name">{county.county}</span>
-            <span class="emissions">{(county.co2_tons / 1000).toFixed(0)}K tons</span>
-            <div class="bar" style="width: {countyData[0] ? (county.co2_tons / countyData[0].co2_tons * 100) : 0}%"></div>
-          </div>
-        {/each}
-      </div>
+    <div class="narrative-conclusion">
+      <h2>What the Data Tells Us</h2>
+      {#if viewMode === 'total'}
+        <p>
+          When we look at <strong>total emissions</strong>, Pennsylvania's major metropolitan areas dominate. 
+          The largest circles—representing counties with the most workers—also tend to be the highest on the 
+          Y-axis, showing the most emissions.
+        </p>
+        <p>
+          This pattern makes sense: more people means more commuters, which means more cars on the road. 
+          But it also reveals an opportunity: <strong>targeted transit improvements in these high-emission 
+          regions could yield massive environmental benefits</strong>. A 20% reduction in Philadelphia's 
+          commute emissions would prevent more CO₂ than eliminating all commute emissions in many smaller counties.
+        </p>
+        <p class="transition-prompt">
+          But total emissions only tell part of the story. Switch to "Per Capita" view to see which regions 
+          have the highest individual impact—and why.
+        </p>
+      {:else}
+        <p>
+          The <strong>per capita view</strong> reveals a different pattern entirely. While urban areas generate 
+          the most total emissions, some rural and suburban counties show surprisingly high emissions per person.
+        </p>
+        <p>
+          Why? Longer commute distances, limited public transit options, and car-dependent infrastructure 
+          mean that each individual commuter in these regions has a larger carbon footprint. A commuter 
+          in a rural county might drive 40 minutes each way, while a Philadelphia commuter might take 
+          a 30-minute train ride—even though the Philadelphian's total commute time is longer, their 
+          per-person emissions are lower.
+        </p>
+        <p class="key-insight">
+          <strong>This reveals a critical insight:</strong> Transit infrastructure doesn't just reduce 
+          total emissions—it dramatically lowers per-person impact, even in dense urban areas. 
+          The next chapter explores this pattern in detail.
+        </p>
+      {/if}
     </div>
 
   </div>
@@ -545,7 +575,7 @@
 <style>
   .chapter-container {
     min-height: 100vh;
-    background: linear-gradient(180deg, #0f3460 0%, #16213e 100%);
+    background: linear-gradient(180deg, #16213e 0%, #0f3460 100%);
     color: white;
     padding: 4rem 2rem;
   }
@@ -634,30 +664,65 @@
     opacity: 0.8;
   }
 
-  .map-container {
+  .chart-and-details {
+    display: flex;
+    gap: 2rem;
+    align-items: flex-start;
     margin: 3rem 0;
+  }
+
+  .map-container {
+    flex: 1;
     min-height: 600px;
+    margin-bottom: 0;
   }
 
   .county-detail {
-    margin: 3rem auto;
+    flex: 0 0 350px;
     padding: 2rem;
-    max-width: 800px;
     background: rgba(78, 205, 196, 0.1);
     border-left: 4px solid #4ecdc4;
     border-radius: 12px;
+    position: sticky;
+    top: 2rem;
+    max-height: calc(100vh - 4rem);
+    overflow-y: auto;
   }
 
   .county-detail h3 {
-    font-size: 2rem;
+    font-size: 1.8rem;
     margin-bottom: 1.5rem;
     color: #4ecdc4;
+    margin-top: 0;
+  }
+
+  .close-btn {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 2rem;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s;
+  }
+
+  .close-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
   }
 
   .detail-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 2rem;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
   }
 
   .detail-item {
@@ -677,70 +742,6 @@
     font-size: 2rem;
     font-weight: 800;
     color: #4ecdc4;
-  }
-
-  .top-counties {
-    margin: 4rem 0;
-  }
-
-  .top-counties h2 {
-    font-size: 2rem;
-    margin-bottom: 2rem;
-    text-align: center;
-  }
-
-  .counties-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .county-row {
-    padding: 1.5rem;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 12px;
-    display: grid;
-    grid-template-columns: 60px 1fr 150px;
-    align-items: center;
-    position: relative;
-    cursor: pointer;
-    transition: all 0.3s;
-  }
-
-  .county-row:hover,
-  .county-row:focus {
-    background: rgba(255, 255, 255, 0.1);
-    transform: translateX(10px);
-    outline: 2px solid #4ecdc4;
-    outline-offset: 2px;
-  }
-
-  .rank {
-    font-size: 2rem;
-    font-weight: 800;
-    color: #ffd93d;
-  }
-
-  .county-name {
-    font-size: 1.3rem;
-    font-weight: 600;
-  }
-
-  .emissions {
-    font-size: 1.3rem;
-    font-weight: 700;
-    color: #ff6b6b;
-    text-align: right;
-  }
-
-  .bar {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    height: 4px;
-    background: linear-gradient(90deg, #ff6b6b, #ffd93d);
-    border-radius: 0 0 12px 12px;
-    transition: width 0.5s ease;
   }
 
   .insight-box {
@@ -772,6 +773,31 @@
     opacity: 0.8;
   }
 
+  .narrative-intro {
+    margin: 3rem 0;
+    padding: 2rem;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    line-height: 1.8;
+  }
+
+  .narrative-intro h2 {
+    font-size: 2.5rem;
+    margin-bottom: 1.5rem;
+    color: #ffd93d;
+    text-align: center;
+  }
+
+  .narrative-intro p {
+    font-size: 1.2rem;
+    margin: 1.5rem 0;
+  }
+
+  .narrative-intro strong {
+    color: #4ecdc4;
+    font-weight: 600;
+  }
+
   .graph-story-context {
     margin: 2.5rem auto 1.3rem auto;
     text-align: center;
@@ -783,34 +809,91 @@
     font-size: 2.2rem;
     font-weight: 700;
   }
+  .chart-explanation {
+    font-size: 1.08rem;
+    opacity: 0.85;
+    margin: 1rem auto;
+    max-width: 800px;
+    line-height: 1.7;
+  }
+  .chart-interaction-hint {
+    font-size: 1rem;
+    margin: 1.5rem auto 0;
+    padding: 1rem;
+    background: rgba(78, 205, 196, 0.1);
+    border-left: 4px solid #4ecdc4;
+    border-radius: 8px;
+    max-width: 600px;
+  }
+  .chart-interaction-hint strong {
+    color: #4ecdc4;
+  }
   .graph-story-context p {
     font-size: 1.08rem;
     opacity: 0.85;
     margin: 0 auto;
   }
-  .key-card {
-    background: rgba(30,30,40,0.85);
-    color: #fff;
+
+  .narrative-conclusion {
+    margin: 4rem 0;
+    padding: 3rem;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    line-height: 1.8;
+  }
+
+  .narrative-conclusion h2 {
+    font-size: 2.2rem;
+    margin-bottom: 2rem;
+    color: #ffd93d;
+    text-align: center;
+  }
+
+  .narrative-conclusion p {
+    font-size: 1.2rem;
+    margin: 1.5rem 0;
+  }
+
+  .narrative-conclusion strong {
+    color: #4ecdc4;
+    font-weight: 600;
+  }
+
+  .transition-prompt {
+    font-size: 1.1rem;
+    font-style: italic;
+    opacity: 0.9;
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background: rgba(78, 205, 196, 0.1);
+    border-left: 4px solid #4ecdc4;
     border-radius: 8px;
-    padding: 1.3em 2em;
-    margin: 1em auto 1.2em auto;
-    max-width: 350px;
-    font-size: 1em;
-    box-shadow: 0 2px 20px rgba(0,0,0,0.08);
   }
-  .key-card .legend-row {
-    display: flex;
-    align-items: center;
-    margin-bottom: 0.3em;
-    gap: 0.8em;
+
+  .key-insight {
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin-top: 2rem;
+    padding: 2rem;
+    background: rgba(78, 205, 196, 0.1);
+    border-left: 4px solid #4ecdc4;
+    border-radius: 8px;
   }
-  .key-card strong {
-    margin-left: auto;
-    color: #ffd700;
+
+  .key-insight strong {
+    color: #4ecdc4;
   }
-  .key-card svg {
-    vertical-align: middle;
-    display: inline-block;
+
+  @media (max-width: 968px) {
+    .chart-and-details {
+      flex-direction: column;
+    }
+
+    .county-detail {
+      flex: 1;
+      position: static;
+      max-height: none;
+    }
   }
 
   @media (max-width: 768px) {
@@ -824,17 +907,6 @@
 
     .stat-highlight {
       font-size: 3rem;
-    }
-
-    .county-row {
-      grid-template-columns: 50px 1fr;
-      gap: 0.5rem;
-    }
-
-    .emissions {
-      grid-column: 1 / -1;
-      text-align: left;
-      margin-top: 0.5rem;
     }
   }
 </style>

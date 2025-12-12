@@ -11,8 +11,24 @@
   import { base } from '$app/paths';
 
 
-  let chapterElements: (HTMLElement | null)[] = [];
+  let chapter1Element: HTMLElement | null = null;
+  let chapter2Element: HTMLElement | null = null;
+  let chapter3Element: HTMLElement | null = null;
+  let chapter4Element: HTMLElement | null = null;
+  let chapter5Element: HTMLElement | null = null;
+  let chapter6Element: HTMLElement | null = null;
+  
   let scrolling: boolean = false;
+
+  // Update chapterElements array when individual elements change
+  $: chapterElements = [
+    chapter1Element,
+    chapter2Element,
+    chapter3Element,
+    chapter4Element,
+    chapter5Element,
+    chapter6Element
+  ];
 
   onMount(() => {
     // Smooth scroll to chapter on load
@@ -127,27 +143,27 @@
     </section>
 
     <!-- Chapter Sections -->
-    <section bind:this={chapterElements[0]} class="chapter-section">
+    <section bind:this={chapter1Element} class="chapter-section">
       <Chapter1 />
     </section>
 
-    <section bind:this={chapterElements[1]} class="chapter-section">
+    <section bind:this={chapter2Element} class="chapter-section">
       <Chapter2 />
     </section>
 
-    <section bind:this={chapterElements[2]} class="chapter-section">
+    <section bind:this={chapter3Element} class="chapter-section">
       <Chapter3 />
     </section>
 
-    <section bind:this={chapterElements[3]} class="chapter-section">
+    <section bind:this={chapter4Element} class="chapter-section">
       <Chapter4 />
     </section>
 
-    <section bind:this={chapterElements[4]} class="chapter-section">
+    <section bind:this={chapter5Element} class="chapter-section">
       <Chapter5 />
     </section>
 
-    <section bind:this={chapterElements[5]} class="chapter-section">
+    <section bind:this={chapter6Element} class="chapter-section">
       <Chapter6 />
     </section>
 
@@ -251,12 +267,18 @@
     text-shadow: 0 6px 18px rgba(0,0,0,0.35);
   }
 
-  .hero-subtle {
-    font-size: 0.98rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    opacity: 0.78;
-    margin-bottom: 2rem;
+  .hero-dek {
+    font-size: clamp(1rem, 1.5vw, 1.2rem);
+    line-height: 1.8;
+    margin-bottom: 1.5rem;
+    opacity: 0.9;
+    text-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+
+  .hero-dek--emphasis {
+    font-weight: 600;
+    font-size: clamp(1.1rem, 1.8vw, 1.4rem);
+    opacity: 0.95;
   }
 
   .cta-button {
